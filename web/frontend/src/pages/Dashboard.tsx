@@ -152,7 +152,7 @@ export function Dashboard() {
 
   const isCommunity = !license || license.plan === 'community'
   const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Hey' : 'Evening'
   const firstName = user?.prepared_by?.split(' ')[0] || user?.email?.split('@')[0] || 'there'
 
   // Remediation stats
@@ -172,10 +172,10 @@ export function Dashboard() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {greeting}, {firstName} 👋
+            {greeting}, {firstName}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Here's what's happening across your infrastructure
+            Security overview for your workspace
           </p>
         </div>
         {/* Quick action */}
@@ -196,10 +196,10 @@ export function Dashboard() {
               <TrendingUp className="h-4 w-4 text-indigo-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-indigo-300">You're on the Free plan</p>
+              <p className="text-sm font-semibold text-indigo-300">Free plan</p>
               <p className="text-xs text-muted-foreground truncate">
-                Limited to {license?.max_connections ?? 5} connections · {license?.max_audits_month ?? 20} audits/month.
-                Unlock scheduled audits, code security, team features and more.
+                {license?.max_connections ?? 5} connections · {license?.max_audits_month ?? 20} audits/month.
+                Scheduled audits, code scanning and team access require a paid plan.
               </p>
             </div>
           </div>
@@ -238,7 +238,7 @@ export function Dashboard() {
           icon={ShieldAlert}
           iconBg={data.total_findings > 0 ? 'bg-orange-500/10' : 'bg-green-500/10'}
           iconColor={data.total_findings > 0 ? 'text-orange-400' : 'text-green-400'}
-          sub={data.total_findings === 0 ? 'All clear ✓' : 'Across all audits'}
+          sub={data.total_findings === 0 ? 'Nothing flagged' : 'Across all scans'}
           href="/findings"
           alert={data.total_findings > 0}
         />
@@ -288,7 +288,7 @@ export function Dashboard() {
             ) : (
               <div className="flex h-[210px] flex-col items-center justify-center gap-2 text-muted-foreground">
                 <Shield className="h-8 w-8 opacity-20" />
-                <p className="text-sm">No findings yet — run your first audit</p>
+                <p className="text-sm">Nothing to show yet</p>
               </div>
             )}
             {/* Legend */}
@@ -328,7 +328,7 @@ export function Dashboard() {
               <div className="flex items-center gap-4">
                 <ScoreRing score={monitoringOverview.avg_score} />
                 <div className="space-y-1 flex-1">
-                  <p className="text-xs text-muted-foreground">Average across connections</p>
+                  <p className="text-xs text-muted-foreground">Avg. across connections</p>
                   <div className="space-y-1.5">
                     {monitoringOverview.sla_breach_count > 0 && (
                       <div className="flex items-center gap-1.5 text-xs text-red-400 font-medium">
@@ -362,8 +362,8 @@ export function Dashboard() {
               <Activity className="h-5 w-5 text-muted-foreground/40" />
             </div>
             <div>
-              <p className="text-sm font-medium">No monitoring data</p>
-              <p className="text-xs text-muted-foreground mt-1">Run audits to see scores here</p>
+              <p className="text-sm font-medium">No data yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Scores appear after the first audit</p>
             </div>
           </Card>
         )}
@@ -577,7 +577,7 @@ export function Dashboard() {
               <div>
                 <p className="font-semibold text-sm">No audits yet</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                  Connect your first infrastructure and start scanning for security issues.
+                  Add a connection and kick off your first scan.
                 </p>
               </div>
               <button
