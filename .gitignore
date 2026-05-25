@@ -29,3 +29,12 @@ release/
 
 # Built CLI binary
 backend
+
+# Environment secrets
+web/.env
+
+# Distribution packages (too large / build artifacts)
+dist/
+
+# Compiled binaries at root
+keygen
