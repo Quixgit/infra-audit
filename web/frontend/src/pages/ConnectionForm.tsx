@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { connectionsApi, licenseApi, type ConnectionFormData } from '@/lib/api'
 
-type ConnType = 'do' | 'code' | 'ssl' | 'dns'
+type ConnType = 'do' | 'code' | 'ssl' | 'dns' | 'aws'
 
 const defaultForm: ConnectionFormData = {
   conn_type: 'do',
@@ -29,12 +29,24 @@ const defaultForm: ConnectionFormData = {
   repo_branch: '',
   repo_local_path: '',
   domains: '',
+  aws_access_key_id: '',
+  aws_secret_key: '',
+  aws_region: 'us-east-1',
+  github_webhook_secret: '',
+  github_repo_url: '',
 }
 
 type TestState = 'idle' | 'loading' | 'ok' | 'error'
 
 const connectionListPath = (connType: ConnType) =>
   connType === 'code' ? '/code-iac' : '/cloud-audits'
+
+const AWS_REGIONS = [
+  'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+  'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-north-1',
+  'ap-northeast-1', 'ap-northeast-2', 'ap-southeast-1', 'ap-southeast-2',
+  'ap-south-1', 'sa-east-1', 'ca-central-1', 'me-south-1', 'af-south-1',
+]
 
 interface TypeMeta {
   type: ConnType
@@ -95,6 +107,18 @@ const typeMeta: TypeMeta[] = [
     activeBg: 'bg-orange-500/8',
     badgeColor: 'bg-orange-500/15 text-orange-400',
   },
+  {
+    type: 'aws' as ConnType,
+    label: 'AWS',
+    sublabel: 'CIS AWS Foundations audit',
+    icon: Shield,
+    iconBg: 'bg-yellow-500/20',
+    iconColor: 'text-yellow-400',
+    activeBorder: 'border-yellow-500/60',
+    activeBg: 'bg-yellow-500/8',
+    badgeColor: 'bg-yellow-500/15 text-yellow-400',
+    requiresFeature: 'aws_audit',
+  },
 ]
 
 // ── Section label ─────────────────────────────────────────────────────────────
@@ -139,16 +163,19 @@ function HintBox({
 // ── Type picker ───────────────────────────────────────────────────────────────
 
 function TypePicker({
-  active, hasCodeAudit, onChange,
+  active, hasCodeAudit, hasAWSAudit, onChange,
 }: {
   active: ConnType
   hasCodeAudit: boolean
+  hasAWSAudit: boolean
   onChange: (t: ConnType) => void
 }) {
   return (
     <div className="grid grid-cols-2 gap-2.5">
       {typeMeta.map((m) => {
-        const locked = m.requiresFeature === 'code_audit' && !hasCodeAudit
+        const locked =
+          (m.requiresFeature === 'code_audit' && !hasCodeAudit) ||
+          (m.requiresFeature === 'aws_audit' && !hasAWSAudit)
         const isActive = active === m.type
         const Icon = m.icon
         return (
@@ -157,7 +184,11 @@ function TypePicker({
             type="button"
             onClick={() => {
               if (locked) {
-                toast.error('Code Security audit requires a Professional plan or higher')
+                if (m.requiresFeature === 'aws_audit') {
+                  toast.error('AWS audit requires a Professional plan or higher')
+                } else {
+                  toast.error('Code Security audit requires a Professional plan or higher')
+                }
                 return
               }
               onChange(m.type)
@@ -209,7 +240,7 @@ export function ConnectionForm() {
 
   const rawType = searchParams.get('type') as ConnType | null
   const initialType: ConnType =
-    rawType && ['do', 'code', 'ssl', 'dns'].includes(rawType) ? rawType : 'do'
+    rawType && ['do', 'code', 'ssl', 'dns', 'aws'].includes(rawType) ? rawType : 'do'
   const fromAuditTypes = searchParams.has('type')
 
   const [form, setForm] = useState<ConnectionFormData>({ ...defaultForm, conn_type: initialType })
@@ -218,6 +249,7 @@ export function ConnectionForm() {
 
   const { data: license } = useQuery({ queryKey: ['license'], queryFn: licenseApi.get })
   const hasCodeAudit = license?.features?.includes('code_audit') ?? false
+  const hasAWSAudit = license?.features?.includes('aws_audit') ?? false
 
   const { data: existing } = useQuery({
     queryKey: ['connections'],
@@ -242,6 +274,11 @@ export function ConnectionForm() {
           repo_branch: conn.repo_branch ?? '',
           repo_local_path: conn.repo_local_path ?? '',
           domains: conn.domains ?? '',
+          aws_access_key_id: '',
+          aws_secret_key: '',
+          aws_region: conn.aws_region ?? 'us-east-1',
+          github_webhook_secret: '',
+          github_repo_url: conn.github_repo_url ?? '',
         })
       }
     }
@@ -299,7 +336,8 @@ export function ConnectionForm() {
   }
 
   const isNetworkScan = form.conn_type === 'ssl' || form.conn_type === 'dns'
-  const activeTypeMeta = typeMeta.find((m) => m.type === form.conn_type)!
+  const isAWS = form.conn_type === 'aws'
+  const activeTypeMeta = typeMeta.find((m) => m.type === form.conn_type) ?? typeMeta[0]!
 
   const canTestNow =
     form.conn_type === 'code'
@@ -363,6 +401,7 @@ export function ConnectionForm() {
           <TypePicker
             active={form.conn_type}
             hasCodeAudit={hasCodeAudit}
+            hasAWSAudit={hasAWSAudit}
             onChange={switchType}
           />
         </div>
@@ -694,6 +733,122 @@ export function ConnectionForm() {
                     ))}
                   </div>
                 </div>
+              </>
+            )}
+
+            {/* ── AWS fields ── */}
+            {isAWS && (
+              <>
+                <div className="space-y-4">
+                  <SectionLabel icon={Key} label="AWS credentials" />
+
+                  <HintBox variant="warn">
+                    Use a dedicated IAM user with <strong>read-only</strong> permissions (SecurityAudit + ReadOnlyAccess policies). Never use root credentials.
+                  </HintBox>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="aws_access_key_id" className="text-xs font-medium">
+                      Access Key ID <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      id="aws_access_key_id"
+                      placeholder={isEdit ? '(unchanged — leave blank to keep)' : 'AKIAIOSFODNN7EXAMPLE'}
+                      value={form.aws_access_key_id ?? ''}
+                      onChange={(e) => set('aws_access_key_id', e.target.value)}
+                      required={!isEdit}
+                      className="h-9 font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="aws_secret_key" className="text-xs font-medium">
+                      Secret Access Key <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      id="aws_secret_key"
+                      type="password"
+                      placeholder={isEdit ? '(unchanged — leave blank to keep)' : 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'}
+                      value={form.aws_secret_key ?? ''}
+                      onChange={(e) => set('aws_secret_key', e.target.value)}
+                      required={!isEdit}
+                      className="h-9 font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="aws_region" className="text-xs font-medium">
+                      Primary region <span className="text-red-400">*</span>
+                    </Label>
+                    <Select value={form.aws_region ?? 'us-east-1'} onValueChange={(v) => set('aws_region', v)}>
+                      <SelectTrigger className="h-9 text-xs font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AWS_REGIONS.map((r) => (
+                          <SelectItem key={r} value={r} className="text-xs font-mono">{r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground/70">
+                      The scanner will also check global resources (IAM, S3) regardless of region.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <SectionLabel icon={GitBranch} label="GitHub webhook (optional)" />
+                  <p className="text-xs text-muted-foreground/70">
+                    Automatically trigger an audit when code is pushed to your repo. Leave blank to skip.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="github_repo_url" className="text-xs font-medium">
+                      Repository URL
+                    </Label>
+                    <Input
+                      id="github_repo_url"
+                      placeholder="https://github.com/org/repo"
+                      value={form.github_repo_url ?? ''}
+                      onChange={(e) => set('github_repo_url', e.target.value)}
+                      className="h-9 font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="github_webhook_secret" className="text-xs font-medium">
+                      Webhook secret
+                    </Label>
+                    <Input
+                      id="github_webhook_secret"
+                      type="password"
+                      placeholder={isEdit ? '(unchanged — leave blank to keep)' : 'your-webhook-secret'}
+                      value={form.github_webhook_secret ?? ''}
+                      onChange={(e) => set('github_webhook_secret', e.target.value)}
+                      className="h-9 font-mono text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground/70">
+                      Set this as the secret in GitHub webhook settings. Used to verify request authenticity.
+                    </p>
+                  </div>
+                </div>
+
+                <HintBox variant="info">
+                  <p className="font-medium text-foreground/80 mb-1.5">CIS AWS Foundations checks</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    {[
+                      ['EC2', 'IMDSv2, public exposure'],
+                      ['S3', 'Public access, encryption'],
+                      ['IAM', 'MFA, access key age'],
+                      ['RDS', 'Public access, encryption'],
+                      ['Security Groups', 'Open ports to 0.0.0.0/0'],
+                      ['VPC', 'Flow logs, defaults'],
+                    ].map(([svc, desc]) => (
+                      <div key={svc} className="flex items-center gap-1.5">
+                        <span className="h-1 w-1 rounded-full bg-yellow-400/60 shrink-0" />
+                        <span className="font-medium text-foreground/70">{svc}</span>
+                        <span className="text-muted-foreground/70">— {desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </HintBox>
               </>
             )}
 

@@ -201,8 +201,13 @@ func (srv *server) handleCreateConnection(w http.ResponseWriter, r *http.Request
 		return
 	}
 	isNetworkScan := req.ConnType == "ssl" || req.ConnType == "dns"
-	if !isNetworkScan && req.ConnType != "code" && req.DOToken == "" {
+	isAWS := req.ConnType == "aws"
+	if !isNetworkScan && !isAWS && req.ConnType != "code" && req.DOToken == "" {
 		writeError(w, http.StatusBadRequest, "do_token is required for DigitalOcean connections")
+		return
+	}
+	if isAWS && (req.AWSAccessKeyID == "" || req.AWSSecretKey == "") {
+		writeError(w, http.StatusBadRequest, "aws_access_key_id and aws_secret_key are required for AWS connections")
 		return
 	}
 	if isNetworkScan && req.Domains == "" {
@@ -335,6 +340,8 @@ func (srv *server) handleRunAudit(w http.ResponseWriter, r *http.Request) {
 			srv.runSSLAudit(job.ID, connectionID, userID)
 		case "dns":
 			srv.runDNSAudit(job.ID, connectionID, userID)
+		case "aws":
+			srv.runAWSAudit(job.ID, connectionID, userID)
 		default:
 			srv.runAudit(job.ID, connectionID, userID)
 		}
@@ -352,12 +359,21 @@ func (srv *server) handleRunAudit(w http.ResponseWriter, r *http.Request) {
 func (srv *server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(ctxTenantID).(string)
 	limit := 100
+	offset := 0
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if v, err := fmt.Sscanf(l, "%d", &limit); v == 0 || err != nil {
 			limit = 100
 		}
 	}
-	jobs, err := srv.listJobs(r.Context(), tenantID, limit)
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if v, err := fmt.Sscanf(o, "%d", &offset); v == 0 || err != nil {
+			offset = 0
+		}
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	jobs, err := srv.listJobs(r.Context(), tenantID, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "db error")
 		return
@@ -578,6 +594,8 @@ func (srv *server) handleBulkRun(w http.ResponseWriter, r *http.Request) {
 				srv.runSSLAudit(jID, cID, uID)
 			case "dns":
 				srv.runDNSAudit(jID, cID, uID)
+			case "aws":
+				srv.runAWSAudit(jID, cID, uID)
 			default:
 				srv.runAudit(jID, cID, uID)
 			}

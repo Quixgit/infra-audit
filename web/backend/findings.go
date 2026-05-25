@@ -113,7 +113,7 @@ var validFindingStatuses = map[string]bool{
 // getAllAggregatedFindings loads every finding across all done jobs for a tenant,
 // merging in any status overrides from the DB. Used by findings and compliance handlers.
 func (srv *server) getAllAggregatedFindings(ctx context.Context, tenantID string) ([]AggregatedFinding, error) {
-	jobs, err := srv.listJobs(ctx, tenantID, 500)
+	jobs, err := srv.listJobs(ctx, tenantID, 500, 0)
 	if err != nil {
 		return nil, err
 	}

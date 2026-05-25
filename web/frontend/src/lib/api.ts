@@ -113,7 +113,7 @@ export const authApi = {
 export type Connection = {
   id: string
   user_id: string
-  conn_type: 'do' | 'code' | 'ssl' | 'dns'
+  conn_type: 'do' | 'code' | 'ssl' | 'dns' | 'aws'
   name: string
   do_token_masked?: string
   project_id: string
@@ -125,11 +125,16 @@ export type Connection = {
   repo_local_path?: string
   last_stack_detected?: string
   domains?: string // comma-separated for ssl/dns
+  // AWS fields
+  aws_access_key_masked?: string
+  aws_region?: string
+  // GitHub webhook
+  github_repo_url?: string
   created_at: string
 }
 
 export type ConnectionFormData = {
-  conn_type: 'do' | 'code' | 'ssl' | 'dns'
+  conn_type: 'do' | 'code' | 'ssl' | 'dns' | 'aws'
   name: string
   // DO fields
   do_token: string
@@ -144,6 +149,13 @@ export type ConnectionFormData = {
   repo_local_path: string
   // SSL / DNS fields
   domains: string
+  // AWS fields
+  aws_access_key_id?: string
+  aws_secret_key?: string
+  aws_region?: string
+  // GitHub webhook
+  github_webhook_secret?: string
+  github_repo_url?: string
 }
 
 export const connectionsApi = {
@@ -399,6 +411,21 @@ export type LicenseFeature =
   | 'custom_branding'
   | 'team'
   | 'sso'
+  | 'aws_audit'
+  | 'basic_audit'
+  | 'basic_report'
+  | 'pdf_reports'
+  | 'compliance_basic'
+  | 'evidence'
+  | 'policies'
+  | 'access_reviews'
+  | 'remediation'
+  | 'priority_support'
+  | 'custom_frameworks'
+  | 'white_label'
+  | 'self_hosted'
+  | 'dedicated_support'
+  | 'human_review'
 
 export type LicenseInfo = {
   plan: LicensePlan
@@ -1044,6 +1071,87 @@ export const remediationApi = {
 
   verifyResult: (id: string) =>
     api.get<{ verify_status: string }>(`/remediation/tasks/${id}/verify-result`).then((r) => r.data),
+
+  getAISuggestion: (id: string) =>
+    api.get<AISuggestion>(`/remediation/tasks/${id}/ai-suggest`).then((r) => r.data),
+}
+
+// ── AI suggestions ────────────────────────────────────────────────────────────
+
+export type AISuggestion = {
+  commands: string[]
+  explanation: string
+  doc_links: string[]
+  difficulty: 'easy' | 'medium' | 'hard'
+  est_time: string
+  error?: string
+  fallback?: string
+}
+
+// ── Custom Compliance Frameworks ──────────────────────────────────────────────
+
+export type CustomControl = {
+  id: string
+  framework_id: string
+  tenant_id: string
+  ctrl_id: string
+  name: string
+  description: string
+  category: string
+  created_at: string
+}
+
+export type CustomFramework = {
+  id: string
+  tenant_id: string
+  name: string
+  slug: string
+  version: string
+  description: string
+  controls?: CustomControl[]
+  created_at: string
+  updated_at: string
+}
+
+export const customFrameworksApi = {
+  list: () =>
+    api.get<CustomFramework[]>('/custom-frameworks').then((r) => r.data),
+
+  create: (data: { name: string; slug?: string; version?: string; description?: string }) =>
+    api.post<CustomFramework>('/custom-frameworks', data).then((r) => r.data),
+
+  get: (id: string) =>
+    api.get<CustomFramework>(`/custom-frameworks/${id}`).then((r) => r.data),
+
+  update: (id: string, data: { name?: string; version?: string; description?: string }) =>
+    api.put<CustomFramework>(`/custom-frameworks/${id}`, data).then((r) => r.data),
+
+  delete: (id: string) =>
+    api.delete(`/custom-frameworks/${id}`),
+
+  listControls: (frameworkId: string) =>
+    api.get<CustomControl[]>(`/custom-frameworks/${frameworkId}/controls`).then((r) => r.data),
+
+  createControl: (frameworkId: string, data: {
+    ctrl_id: string; name: string; description?: string; category?: string
+  }) =>
+    api.post<CustomControl>(`/custom-frameworks/${frameworkId}/controls`, data).then((r) => r.data),
+
+  updateControl: (frameworkId: string, controlId: string, data: {
+    name?: string; description?: string; category?: string
+  }) =>
+    api.put<CustomControl>(`/custom-frameworks/${frameworkId}/controls/${controlId}`, data).then((r) => r.data),
+
+  deleteControl: (frameworkId: string, controlId: string) =>
+    api.delete(`/custom-frameworks/${frameworkId}/controls/${controlId}`),
+
+  importControls: (frameworkId: string, controls: Array<{
+    ctrl_id: string; name: string; description?: string; category?: string
+  }>) =>
+    api.post<{ imported: number; total: number }>(
+      `/custom-frameworks/${frameworkId}/controls/import`,
+      { controls }
+    ).then((r) => r.data),
 }
 
 export default api

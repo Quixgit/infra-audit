@@ -113,6 +113,29 @@ const plans: PlanDef[] = [
       'access_reviews', 'remediation', 'priority_support',
     ],
   },
+  {
+    key: 'enterprise',
+    label: 'Enterprise',
+    tagline: 'For large orgs & regulated industries',
+    price: 'Custom',
+    priceSub: 'contact sales',
+    priceAnnual: null,
+    highlight: 'border-purple-500/40',
+    ring: 'shadow-[0_0_0_2px_rgba(168,85,247,0.3)]',
+    badge: 'border-purple-500/60 text-purple-400 bg-purple-500/5',
+    badgeText: 'Enterprise',
+    maxConnections: 'Unlimited',
+    maxAudits: 'Unlimited',
+    maxUsers: 'Unlimited',
+    features: [
+      'basic_audit', 'basic_report',
+      'scheduled_audits', 'share_links', 'pdf_reports',
+      'code_audit', 'compliance_basic', 'custom_branding',
+      'api_tokens', 'team', 'evidence', 'policies',
+      'access_reviews', 'remediation', 'priority_support',
+      'sso', 'custom_frameworks', 'white_label', 'self_hosted', 'dedicated_support',
+    ],
+  },
 ]
 
 // ── Feature rows ──────────────────────────────────────────────────────────────
@@ -240,7 +263,7 @@ export function Plans() {
       )}
 
       {/* ── Plan cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 pt-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 pt-4">
         {plans.map((plan) => {
           const isCurrent = activePlan === plan.key
           const hasBadge = isCurrent || !!plan.badgeText
@@ -333,6 +356,13 @@ export function Plans() {
                     <div className="w-full text-center text-xs text-muted-foreground py-2 rounded-md border border-border">
                       Free forever
                     </div>
+                  ) : plan.key === 'enterprise' ? (
+                    <a
+                      href="mailto:sales@infrajump.io?subject=Enterprise%20Plan%20Inquiry"
+                      className="flex items-center justify-center gap-1.5 w-full text-xs font-medium py-2 rounded-md border border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-colors"
+                    >
+                      Contact Sales <ArrowRight className="h-3 w-3" />
+                    </a>
                   ) : (
                     <button
                       onClick={() => navigate(`/checkout?plan=${plan.key}`)}
@@ -341,7 +371,7 @@ export function Plans() {
                           ? 'border-violet-500/50 text-violet-400 hover:bg-violet-500/10'
                           : plan.key === 'professional'
                           ? 'border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/10'
-                          : 'border-purple-400/40 text-purple-400 hover:bg-purple-400/10'
+                          : 'border-border text-muted-foreground hover:bg-muted/30'
                       }`}
                     >
                       Get started <ArrowRight className="h-3 w-3" />
@@ -383,9 +413,9 @@ export function Plans() {
               <tbody>
                 {/* Limits rows */}
                 {[
-                  { label: 'Connections',    values: ['5', '10', '30', 'Unlimited'] },
-                  { label: 'Audits / month', values: ['20', '30', '100', 'Unlimited'] },
-                  { label: 'Users',          values: ['1', '2', '5', '15'] },
+                  { label: 'Connections',    values: ['5', '10', '30', 'Unlimited', 'Unlimited'] },
+                  { label: 'Audits / month', values: ['20', '30', '100', 'Unlimited', 'Unlimited'] },
+                  { label: 'Users',          values: ['1', '2', '5', '15', 'Unlimited'] },
                 ].map((row) => (
                   <tr key={row.label} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
                     <td className="py-2.5 pr-4 text-sm text-muted-foreground font-medium">{row.label}</td>

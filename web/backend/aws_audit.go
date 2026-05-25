@@ -3,21 +3,20 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	awsrules "infra-audit/internal/rules"
+	awsscanner "infra-audit/internal/scanner/aws"
 	"infra-audit/internal/model"
 	"infra-audit/internal/report"
-	"infra-audit/internal/rules"
-	"infra-audit/internal/scanner"
 	"infra-audit/internal/util"
 )
 
-func (srv *server) runAudit(jobID, connectionID, userID string) {
+func (srv *server) runAWSAudit(jobID, connectionID, userID string) {
 	ctx := context.Background()
 	dataDir := envOr("DATA_DIR", "/app/data")
 	reportDir := filepath.Join(dataDir, "reports", jobID)
@@ -39,28 +38,47 @@ func (srv *server) runAudit(jobID, connectionID, userID string) {
 		return
 	}
 
-	srv.updateJobProgress(ctx, jobID, "running", "Connecting to DigitalOcean...")
+	// Decrypt credentials
+	accessKey, err := decryptToken(conn.AWSAccessKeyID)
+	if err != nil {
+		srv.updateJobFailed(ctx, jobID, "decrypt access key: "+err.Error())
+		return
+	}
+	secretKey, err := decryptToken(conn.AWSSecretKey)
+	if err != nil {
+		srv.updateJobFailed(ctx, jobID, "decrypt secret key: "+err.Error())
+		return
+	}
 
-	inv, err := scanner.ScanDigitalOceanWithOptions(conn.Name, conn.DOToken, scanner.DOScanOptions{
-		ProjectID:     conn.ProjectID,
-		ScopeMode:     conn.ScopeMode,
-		SpacesBuckets: conn.SpacesBuckets,
+	region := conn.AWSRegion
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	srv.updateJobProgress(ctx, jobID, "running", fmt.Sprintf("Connecting to AWS (%s)...", region))
+
+	inv, err := awsscanner.Scan(conn.Name, awsscanner.ScanOptions{
+		AccessKeyID:     accessKey,
+		SecretAccessKey: secretKey,
+		Region:          region,
 	})
 	if err != nil {
-		srv.updateJobFailed(ctx, jobID, "scan failed: "+err.Error())
+		srv.updateJobFailed(ctx, jobID, "AWS scan failed: "+err.Error())
 		return
 	}
 
-	if hasAuthErr(inv.Errors) {
-		srv.updateJobFailed(ctx, jobID, "DigitalOcean authentication failed — check DO token")
-		return
+	// Check for auth errors
+	for _, e := range inv.Errors {
+		if strings.Contains(e, "NoCredentialProviders") || strings.Contains(e, "InvalidClientTokenId") || strings.Contains(e, "AuthFailure") {
+			srv.updateJobFailed(ctx, jobID, "AWS authentication failed — check Access Key ID and Secret Access Key")
+			return
+		}
 	}
 
-	srv.updateJobProgress(ctx, jobID, "running", "Evaluating security rules...")
+	srv.updateJobProgress(ctx, jobID, "running", "Evaluating AWS security rules...")
 
-	findings := rules.Evaluate(inv)
-	positives := rules.PositiveFindings(inv)
-	limitations := rules.Limitations(inv)
+	findings := awsrules.EvaluateAWS(inv)
+	positives := awsrules.AWSPositiveFindings(inv)
 
 	var critical, high, medium, low int
 	for _, f := range findings {
@@ -76,21 +94,18 @@ func (srv *server) runAudit(jobID, connectionID, userID string) {
 		}
 	}
 
-	// Save inventory and findings JSON for in-browser viewer and evidence collection.
+	// Save inventory and findings JSON
 	if b, err := json.Marshal(inv); err == nil {
-		_ = os.WriteFile(filepath.Join(reportDir, "do_inventory.json"), b, 0644)
+		_ = os.WriteFile(filepath.Join(reportDir, "aws_inventory.json"), b, 0644)
 	}
 	if b, err := json.Marshal(findings); err == nil {
 		_ = os.WriteFile(filepath.Join(reportDir, "findings.json"), b, 0644)
 	}
 
-	srv.updateJobProgress(ctx, jobID, "running", "Generating reports...")
+	srv.updateJobProgress(ctx, jobID, "running", "Generating AWS security report...")
 
 	assetsDir := filepath.Join(reportDir, "assets")
-	if err := os.MkdirAll(assetsDir, 0755); err != nil {
-		srv.updateJobFailed(ctx, jobID, "failed to create assets dir: "+err.Error())
-		return
-	}
+	_ = os.MkdirAll(assetsDir, 0755)
 
 	logoRel := resolveAsset(userID, "logo.png", assetsDir)
 	watermarkRel := resolveAsset(userID, "watermark.png", assetsDir)
@@ -99,14 +114,14 @@ func (srv *server) runAudit(jobID, connectionID, userID string) {
 		resolveAsset(userID, icon, assetsDir)
 	}
 
-	base := util.SafeName(conn.Name + "_infrastructure_security_audit")
+	base := util.SafeName(conn.Name + "_aws_security_audit")
 	now := time.Now().UTC()
 
 	r := model.Report{
 		Meta: model.ReportMeta{
 			Client:           conn.Name,
-			ProjectName:      "Infrastructure Environment",
-			Provider:         "DigitalOcean",
+			ProjectName:      fmt.Sprintf("AWS %s Security Assessment", region),
+			Provider:         "AWS",
 			PreparedBy:       user.PreparedBy,
 			AuditorOrg:       user.AuditorOrg,
 			AuditorAddress:   user.AuditorAddress,
@@ -123,18 +138,21 @@ func (srv *server) runAudit(jobID, connectionID, userID string) {
 			WatermarkPath:    watermarkRel,
 			FooterBgPath:     footerBgRel,
 			Standards: []string{
-				"ISO/IEC 27001:2022",
+				"CIS AWS Foundations Benchmark v1.5",
 				"NIST Cybersecurity Framework",
-				"CIS Critical Security Controls",
-				"CIS Kubernetes Benchmark, where applicable",
+				"ISO/IEC 27001:2022",
+				"SOC 2 Type II",
 			},
 		},
-		Inventory:   inv,
-		Findings:    findings,
-		Positives:   positives,
-		Limitations: limitations,
+		Inventory: inv,
+		Findings:  findings,
+		Positives: positives,
+		Limitations: []string{
+			"Scan limited to region: " + region,
+			"IAM inline policies and complex permission chains require manual review",
+			"CloudTrail and GuardDuty status require additional permissions",
+		},
 	}
-	r.Summary = rules.SummaryText(r)
 
 	htmlFile := filepath.Join(reportDir, base+".html")
 	docxFile := filepath.Join(reportDir, base+".docx")
@@ -143,24 +161,21 @@ func (srv *server) runAudit(jobID, connectionID, userID string) {
 		srv.updateJobFailed(ctx, jobID, "HTML generation failed: "+err.Error())
 		return
 	}
-
 	if err := report.WriteDOCX(docxFile, r); err != nil {
 		srv.updateJobFailed(ctx, jobID, "DOCX generation failed: "+err.Error())
 		return
 	}
-
 	if err := report.ApplyDOCXBranding(docxFile, reportDir, r.Meta); err != nil {
-		log.Printf("WARN: ApplyDOCXBranding: %v", err)
+		// Non-fatal
+		_ = err
 	}
 
 	srv.updateJobDone(ctx, jobID, htmlFile, docxFile, critical, high, medium, low)
 
-	// Fetch completed job for monitoring (needs TenantID, ConnectionID etc.)
 	if completedJob, err := srv.getJob(ctx, jobID); err == nil {
 		go srv.postJobMonitoring(context.Background(), completedJob)
 	}
-
-	go srv.autoCollectEvidence(context.Background(), jobID, userID, reportDir, htmlFile, docxFile, "do")
+	go srv.autoCollectEvidence(context.Background(), jobID, userID, reportDir, htmlFile, docxFile, "aws")
 
 	if user.NotifyEmail && user.AuditorEmail != "" {
 		go sendJobEmail(user.AuditorEmail, conn.Name, jobID, critical, high, medium, low, false, "")
@@ -168,30 +183,4 @@ func (srv *server) runAudit(jobID, connectionID, userID string) {
 
 	// Slack notification
 	go srv.notifySlackJobComplete(ctx, conn.TenantID, conn.Name, jobID, critical, high, medium, low, false)
-}
-
-func hasAuthErr(errs []string) bool {
-	for _, e := range errs {
-		if strings.Contains(e, "HTTP 401") || strings.Contains(e, "Unauthorized") {
-			return true
-		}
-	}
-	return false
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
 }

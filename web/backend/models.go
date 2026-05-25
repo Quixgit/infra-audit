@@ -26,7 +26,7 @@ type Connection struct {
 	ID                string    `json:"id"`
 	TenantID          string    `json:"tenant_id"`
 	UserID            string    `json:"user_id"`
-	ConnType          string    `json:"conn_type"` // "do" | "code" | "ssl" | "dns"
+	ConnType          string    `json:"conn_type"` // "do" | "code" | "ssl" | "dns" | "aws"
 	Name              string    `json:"name"`
 	DOToken           string    `json:"-"`
 	ProjectID         string    `json:"project_id"`
@@ -39,6 +39,14 @@ type Connection struct {
 	RepoLocalPath     string    `json:"repo_local_path"`
 	LastStackDetected string    `json:"last_stack_detected"`
 	Domains           string    `json:"domains"` // comma-separated for ssl/dns
+	// AWS fields
+	AWSAccessKeyID    string    `json:"-"` // encrypted
+	AWSSecretKey      string    `json:"-"` // encrypted
+	AWSRegion         string    `json:"aws_region,omitempty"`
+	AWSAccessKeyMasked string   `json:"aws_access_key_masked,omitempty"`
+	// GitHub webhook
+	GitHubWebhookSecret string  `json:"-"` // encrypted
+	GitHubRepoURL       string  `json:"github_repo_url,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 
@@ -161,6 +169,13 @@ type createConnectionRequest struct {
 	RepoBranch    string `json:"repo_branch"`
 	RepoLocalPath string `json:"repo_local_path"`
 	Domains       string `json:"domains"` // comma-separated for ssl/dns
+	// AWS
+	AWSAccessKeyID  string `json:"aws_access_key_id"`
+	AWSSecretKey    string `json:"aws_secret_key"`
+	AWSRegion       string `json:"aws_region"`
+	// GitHub webhook
+	GitHubWebhookSecret string `json:"github_webhook_secret"`
+	GitHubRepoURL       string `json:"github_repo_url"`
 }
 
 type connectionResponse struct {
@@ -274,5 +289,14 @@ func connToResponse(c Connection) connectionResponse {
 	if c.ConnType == "do" || c.ConnType == "" {
 		r.DOTokenMasked = maskToken(c.DOToken)
 	}
+	if c.ConnType == "aws" && c.AWSAccessKeyID != "" {
+		r.AWSAccessKeyMasked = maskToken(c.AWSAccessKeyID)
+	}
+	// Never expose plaintext secrets in response
+	r.DOToken = ""
+	r.RepoToken = ""
+	r.AWSAccessKeyID = ""
+	r.AWSSecretKey = ""
+	r.GitHubWebhookSecret = ""
 	return r
 }

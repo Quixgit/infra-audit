@@ -216,12 +216,13 @@ func effectiveFeatures(claims *LicenseClaims) []string {
 
 // writeFeatureError writes a 403 with upgrade info for gated features.
 func writeFeatureError(w http.ResponseWriter, feature string) {
+	appURL := envOr("APP_URL", "http://localhost:3000")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusForbidden)
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error":       "feature_not_available",
 		"feature":     feature,
-		"upgrade_url": "",
+		"upgrade_url": appURL + "/plans",
 	})
 }
 

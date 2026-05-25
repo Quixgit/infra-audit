@@ -20,14 +20,14 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   AlertTriangle, CheckCircle2, Clock, MessageSquare, Plus,
   Trash2, UserCircle2, RefreshCw, Download, ChevronDown,
-  X, Send, ExternalLink,
+  X, Send, ExternalLink, Sparkles, Terminal, Link,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { remediationApi, type RemediationTask, type RemediationComment } from '@/lib/api'
+import { remediationApi, type RemediationTask, type RemediationComment, type AISuggestion } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -246,6 +246,8 @@ function TaskDrawer({
   const [commentBody, setCommentBody] = useState('')
   const [verifyState, setVerifyState] = useState<'idle' | 'running' | 'done'>('idle')
   const [verifyJobId, setVerifyJobId] = useState<string | null>(null)
+  const [aiSuggestion, setAISuggestion] = useState<AISuggestion | null>(null)
+  const [aiLoading, setAILoading] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const { data: comments = [] } = useQuery({
@@ -374,6 +376,105 @@ function TaskDrawer({
               <p className="text-sm text-foreground/80 leading-relaxed">{task.risk_text}</p>
             </div>
           )}
+
+          {/* AI Remediation Suggestion */}
+          <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-indigo-400" />
+                <span className="text-sm font-semibold text-indigo-300">AI Remediation Guide</span>
+              </div>
+              {!aiSuggestion && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10"
+                  onClick={async () => {
+                    setAILoading(true)
+                    try {
+                      const s = await remediationApi.getAISuggestion(task.id)
+                      setAISuggestion(s)
+                    } catch {
+                      toast.error('AI suggestion unavailable')
+                    } finally {
+                      setAILoading(false)
+                    }
+                  }}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Generating…</> : <><Sparkles className="h-3 w-3 mr-1" />Get AI guide</>}
+                </Button>
+              )}
+              {aiSuggestion && (
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => setAISuggestion(null)}
+                >
+                  Refresh
+                </Button>
+              )}
+            </div>
+
+            {!aiSuggestion && !aiLoading && (
+              <p className="text-xs text-muted-foreground/70">
+                Click "Get AI guide" to generate step-by-step remediation instructions powered by Claude.
+              </p>
+            )}
+
+            {aiSuggestion && !aiSuggestion.error && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-indigo-300 font-medium capitalize">
+                    {aiSuggestion.difficulty}
+                  </span>
+                  <span className="text-muted-foreground">⏱ {aiSuggestion.est_time}</span>
+                </div>
+
+                {aiSuggestion.explanation && (
+                  <p className="text-xs text-foreground/80 leading-relaxed">{aiSuggestion.explanation}</p>
+                )}
+
+                {aiSuggestion.commands.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Terminal className="h-3 w-3" />Commands
+                    </div>
+                    <div className="rounded-lg bg-black/40 border border-border/30 p-3 space-y-1">
+                      {aiSuggestion.commands.map((cmd, i) => (
+                        <div key={i} className="font-mono text-xs text-green-300 break-all">{cmd}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {aiSuggestion.doc_links.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Link className="h-3 w-3" />Documentation
+                    </div>
+                    {aiSuggestion.doc_links.map((link, i) => (
+                      <a
+                        key={i}
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-indigo-400 hover:underline truncate"
+                      >
+                        <ExternalLink className="h-3 w-3 shrink-0" />{link}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {aiSuggestion?.error && (
+              <p className="text-xs text-muted-foreground/70">
+                {aiSuggestion.fallback || 'AI suggestion unavailable — check ANTHROPIC_API_KEY configuration.'}
+              </p>
+            )}
+          </div>
 
           {/* Controls */}
           <div className="grid grid-cols-2 gap-3">

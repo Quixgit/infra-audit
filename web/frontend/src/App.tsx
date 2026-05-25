@@ -26,6 +26,7 @@ import { AccessReviews } from '@/pages/AccessReviews'
 import { AccessReviewDetail } from '@/pages/AccessReviewDetail'
 import { AuditorPortal } from '@/pages/AuditorPortal'
 import { Checkout } from '@/pages/Checkout'
+import { CustomFrameworks } from '@/pages/CustomFrameworks'
 import { useAuthStore } from '@/store/useAuthStore'
 import { authApi } from '@/lib/api'
 
@@ -121,6 +122,7 @@ export default function App() {
             <Route path="/monitoring" element={<Monitoring />} />
             <Route path="/access-reviews" element={<AccessReviews />} />
             <Route path="/access-reviews/:id" element={<AccessReviewDetail />} />
+            <Route path="/custom-frameworks" element={<CustomFrameworks />} />
             <Route path="/privacy" element={<Privacy />} />
           </Route>
         </Routes>

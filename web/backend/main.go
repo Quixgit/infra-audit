@@ -31,6 +31,7 @@ func main() {
 
 	go srv.startScheduler(ctx)
 	go srv.startSLAChecker(ctx)
+	go srv.startWeeklyDigest(ctx)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
@@ -190,6 +191,19 @@ func main() {
 		r.Post("/api/remediation/tasks/{id}/comments", srv.handleAddRemediationComment)
 		r.Post("/api/remediation/tasks/{id}/verify", srv.handleVerifyFix)
 		r.Get("/api/remediation/tasks/{id}/verify-result", srv.handleVerifyResult)
+		r.Get("/api/remediation/tasks/{id}/ai-suggest", srv.handleGetAISuggestion)
+
+		// Custom compliance frameworks
+		r.Get("/api/custom-frameworks", srv.handleListCustomFrameworks)
+		r.Post("/api/custom-frameworks", srv.handleCreateCustomFramework)
+		r.Get("/api/custom-frameworks/{id}", srv.handleGetCustomFramework)
+		r.Put("/api/custom-frameworks/{id}", srv.handleUpdateCustomFramework)
+		r.Delete("/api/custom-frameworks/{id}", srv.handleDeleteCustomFramework)
+		r.Get("/api/custom-frameworks/{frameworkId}/controls", srv.handleListCustomControls)
+		r.Post("/api/custom-frameworks/{frameworkId}/controls", srv.handleCreateCustomControl)
+		r.Put("/api/custom-frameworks/{frameworkId}/controls/{controlId}", srv.handleUpdateCustomControl)
+		r.Delete("/api/custom-frameworks/{frameworkId}/controls/{controlId}", srv.handleDeleteCustomControl)
+		r.Post("/api/custom-frameworks/{frameworkId}/controls/import", srv.handleImportCustomControls)
 
 		// Workspace (tenant) settings
 		r.Get("/api/workspace", srv.handleGetWorkspace)
@@ -228,6 +242,9 @@ func main() {
 	r.Post("/api/auditor/{token}/comments", srv.handleAuditorAddComment)
 	r.Get("/api/auditor/{token}/comments", srv.handleAuditorListComments)
 
+	// GitHub webhook (public — validated by HMAC signature)
+	r.Post("/api/webhooks/github/{connectionId}", srv.handleGitHubWebhook)
+
 	// Public share endpoint
 	r.Get("/api/share/{token}", srv.handleGetShare)
 	r.Post("/api/notify-me", srv.handleNotifyMe)
@@ -236,6 +253,6 @@ func main() {
 	r.Get("/api/ws/jobs/{id}", srv.handleJobWS)
 
 	port := envOr("PORT", "8080")
-	log.Printf("CloudSecGuard backend listening on :%s", port)
+	log.Printf("InfraJump backend listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }

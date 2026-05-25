@@ -149,10 +149,11 @@ export function Sidebar() {
 
         {/* Compliance */}
         <SectionLabel label="Compliance" />
-        {on('compliance')     && <NavItem to="/compliance"    label="Frameworks"    icon={ClipboardCheck} />}
-        {on('evidence')       && <NavItem to="/evidence"      label="Evidence"      icon={FolderOpen} />}
-        {on('policies')       && <NavItem to="/policies"      label="Policies"      icon={ScrollText} />}
-        {on('access_reviews') && <NavItem to="/access-reviews" label="Access Reviews" icon={UserCheck} />}
+        {on('compliance')       && <NavItem to="/compliance"         label="Frameworks"      icon={ClipboardCheck} />}
+        {on('compliance')       && <NavItem to="/custom-frameworks"  label="Custom Frameworks" icon={ShieldCheck} />}
+        {on('evidence')         && <NavItem to="/evidence"           label="Evidence"        icon={FolderOpen} />}
+        {on('policies')         && <NavItem to="/policies"           label="Policies"        icon={ScrollText} />}
+        {on('access_reviews')   && <NavItem to="/access-reviews"     label="Access Reviews"  icon={UserCheck} />}
 
         {/* Reports */}
         <SectionLabel label="Reports" />

@@ -464,6 +464,60 @@ var schemaMigrations = []string{
 	`ALTER TABLE connections ADD COLUMN IF NOT EXISTS domains TEXT NOT NULL DEFAULT ''`,
 	// Performance indexes
 	`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`,
+	// ── AWS Scanner fields ─────────────────────────────────────────────────────
+	`ALTER TABLE connections ADD COLUMN IF NOT EXISTS aws_access_key_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE connections ADD COLUMN IF NOT EXISTS aws_secret_key TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE connections ADD COLUMN IF NOT EXISTS aws_region TEXT NOT NULL DEFAULT ''`,
+	// ── GitHub webhook fields ──────────────────────────────────────────────────
+	`ALTER TABLE connections ADD COLUMN IF NOT EXISTS github_webhook_secret TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE connections ADD COLUMN IF NOT EXISTS github_repo_url TEXT NOT NULL DEFAULT ''`,
+	// ── Custom compliance frameworks ───────────────────────────────────────────
+	`CREATE TABLE IF NOT EXISTS custom_frameworks (
+		id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+		name        TEXT NOT NULL,
+		slug        TEXT NOT NULL,
+		version     TEXT NOT NULL DEFAULT '1.0',
+		description TEXT NOT NULL DEFAULT '',
+		created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		UNIQUE(tenant_id, slug)
+	)`,
+	`CREATE TABLE IF NOT EXISTS custom_controls (
+		id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		framework_id UUID NOT NULL REFERENCES custom_frameworks(id) ON DELETE CASCADE,
+		tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+		ctrl_id      TEXT NOT NULL,
+		name         TEXT NOT NULL,
+		description  TEXT NOT NULL DEFAULT '',
+		category     TEXT NOT NULL DEFAULT '',
+		created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		UNIQUE(framework_id, ctrl_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_custom_frameworks_tenant ON custom_frameworks(tenant_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_custom_controls_framework ON custom_controls(framework_id)`,
+	// ── Weekly digest tracking ─────────────────────────────────────────────────
+	`CREATE TABLE IF NOT EXISTS digest_log (
+		id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+		sent_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_digest_log_tenant ON digest_log(tenant_id, sent_at DESC)`,
+	// ── GitHub webhook events ──────────────────────────────────────────────────
+	`CREATE TABLE IF NOT EXISTS github_webhook_events (
+		id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+		connection_id   UUID REFERENCES connections(id) ON DELETE CASCADE,
+		event_type      TEXT NOT NULL DEFAULT '',
+		pr_number       INT  NOT NULL DEFAULT 0,
+		pr_title        TEXT NOT NULL DEFAULT '',
+		pr_head_sha     TEXT NOT NULL DEFAULT '',
+		pr_repo_url     TEXT NOT NULL DEFAULT '',
+		job_id          UUID REFERENCES audit_jobs(id) ON DELETE SET NULL,
+		status          TEXT NOT NULL DEFAULT 'pending',
+		created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_github_events_tenant ON github_webhook_events(tenant_id, created_at DESC)`,
 }
 
 // ── User queries ──────────────────────────────────────────────────────────────
@@ -601,7 +655,8 @@ func (srv *server) deleteTeamMember(ctx context.Context, tenantID, id string) er
 // ── Connection queries ────────────────────────────────────────────────────────
 
 const connCols = `id,tenant_id,user_id,conn_type,name,do_token,project_id,scope_mode,spaces_buckets,
-repo_source,repo_url,repo_token,repo_branch,repo_local_path,last_stack_detected,domains,created_at`
+repo_source,repo_url,repo_token,repo_branch,repo_local_path,last_stack_detected,domains,
+aws_access_key_id,aws_secret_key,aws_region,github_webhook_secret,github_repo_url,created_at`
 
 func scanConn(row interface {
 	Scan(...interface{}) error
@@ -611,7 +666,9 @@ func scanConn(row interface {
 		&c.ID, &c.TenantID, &c.UserID, &c.ConnType, &c.Name, &c.DOToken,
 		&c.ProjectID, &c.ScopeMode, &c.SpacesBuckets,
 		&c.RepoSource, &c.RepoURL, &c.RepoToken, &c.RepoBranch, &c.RepoLocalPath,
-		&c.LastStackDetected, &c.Domains, &c.CreatedAt,
+		&c.LastStackDetected, &c.Domains,
+		&c.AWSAccessKeyID, &c.AWSSecretKey, &c.AWSRegion,
+		&c.GitHubWebhookSecret, &c.GitHubRepoURL, &c.CreatedAt,
 	)
 	if err != nil {
 		return c, err
@@ -619,6 +676,9 @@ func scanConn(row interface {
 	// Decrypt tokens — falls back to plaintext for legacy unencrypted values
 	c.DOToken, _ = decryptToken(c.DOToken)
 	c.RepoToken, _ = decryptToken(c.RepoToken)
+	c.AWSAccessKeyID, _ = decryptToken(c.AWSAccessKeyID)
+	c.AWSSecretKey, _ = decryptToken(c.AWSSecretKey)
+	c.GitHubWebhookSecret, _ = decryptToken(c.GitHubWebhookSecret)
 	return c, nil
 }
 
@@ -660,13 +720,27 @@ func (srv *server) createConnection(ctx context.Context, tenantID, userID string
 	if err != nil {
 		return Connection{}, err
 	}
+	encAWSKey, err := encryptToken(req.AWSAccessKeyID)
+	if err != nil {
+		return Connection{}, err
+	}
+	encAWSSecret, err := encryptToken(req.AWSSecretKey)
+	if err != nil {
+		return Connection{}, err
+	}
+	encGHSecret, err := encryptToken(req.GitHubWebhookSecret)
+	if err != nil {
+		return Connection{}, err
+	}
 	row := srv.db.QueryRow(ctx,
 		`INSERT INTO connections(user_id,tenant_id,conn_type,name,do_token,project_id,scope_mode,spaces_buckets,
-		  repo_source,repo_url,repo_token,repo_branch,repo_local_path,domains)
-		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		  repo_source,repo_url,repo_token,repo_branch,repo_local_path,domains,
+		  aws_access_key_id,aws_secret_key,aws_region,github_webhook_secret,github_repo_url)
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 		 RETURNING `+connCols,
 		userID, tenantID, connType, req.Name, encDOTok, req.ProjectID, req.ScopeMode, req.SpacesBuckets,
 		req.RepoSource, req.RepoURL, encRepoTok, branch, req.RepoLocalPath, req.Domains,
+		encAWSKey, encAWSSecret, req.AWSRegion, encGHSecret, req.GitHubRepoURL,
 	)
 	return scanConn(row)
 }
@@ -706,13 +780,34 @@ func (srv *server) updateConnection(ctx context.Context, id, tenantID string, re
 		}
 	}
 
+	// AWS credentials
+	var encAWSKey, encAWSSecret string
+	if req.AWSAccessKeyID != "" {
+		encAWSKey, _ = encryptToken(req.AWSAccessKeyID)
+	} else {
+		existing3, err3 := srv.getConnection(ctx, id)
+		if err3 == nil {
+			encAWSKey, _ = encryptToken(existing3.AWSAccessKeyID)
+		}
+	}
+	if req.AWSSecretKey != "" {
+		encAWSSecret, _ = encryptToken(req.AWSSecretKey)
+	} else {
+		existing4, err4 := srv.getConnection(ctx, id)
+		if err4 == nil {
+			encAWSSecret, _ = encryptToken(existing4.AWSSecretKey)
+		}
+	}
+
 	row := srv.db.QueryRow(ctx,
 		`UPDATE connections SET name=$3,do_token=$4,project_id=$5,scope_mode=$6,spaces_buckets=$7,
-		  repo_source=$8,repo_url=$9,repo_token=$10,repo_branch=$11,repo_local_path=$12,domains=$13
+		  repo_source=$8,repo_url=$9,repo_token=$10,repo_branch=$11,repo_local_path=$12,domains=$13,
+		  aws_access_key_id=$14,aws_secret_key=$15,aws_region=$16,github_repo_url=$17
 		 WHERE id=$1 AND tenant_id=$2
 		 RETURNING `+connCols,
 		id, tenantID, req.Name, encDOTok, req.ProjectID, req.ScopeMode, req.SpacesBuckets,
 		req.RepoSource, req.RepoURL, encTok, branch, req.RepoLocalPath, req.Domains,
+		encAWSKey, encAWSSecret, req.AWSRegion, req.GitHubRepoURL,
 	)
 	return scanConn(row)
 }
@@ -781,9 +876,12 @@ func (srv *server) getJob(ctx context.Context, id string) (AuditJob, error) {
 	return scanJob(row)
 }
 
-func (srv *server) listJobs(ctx context.Context, tenantID string, limit int) ([]AuditJob, error) {
+func (srv *server) listJobs(ctx context.Context, tenantID string, limit, offset int) ([]AuditJob, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	rows, err := srv.db.Query(ctx,
 		`SELECT `+jobCols+`
@@ -791,7 +889,7 @@ func (srv *server) listJobs(ctx context.Context, tenantID string, limit int) ([]
 		 JOIN connections c ON c.id=j.connection_id
 		 WHERE j.tenant_id=$1
 		 ORDER BY j.started_at DESC
-		 LIMIT $2`, tenantID, limit)
+		 LIMIT $2 OFFSET $3`, tenantID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
