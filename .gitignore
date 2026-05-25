@@ -1,0 +1,31 @@
+out/
+bin/
+*.tmp
+*.bak
+*.word.html
+.DS_Store
+
+internal/report.bak.*/
+keys/private.pem
+
+# Node / frontend build artifacts
+web/frontend/node_modules/
+web/frontend/dist/
+web/frontend/.vite/
+
+# Go build artifacts
+web/backend/*.db
+web/backend/infrajump
+web/backend/backend
+
+# Claude session files
+.claude/
+
+# Assets (binary, kept outside repo)
+assets/
+
+# Release binaries
+release/
+
+# Built CLI binary
+backend

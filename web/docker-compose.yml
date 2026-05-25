@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: infra_audit
+      POSTGRES_USER: audit
+      POSTGRES_PASSWORD: audit123
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audit -d infra_audit"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: web/backend/Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://audit:audit123@postgres:5432/infra_audit?sslmode=disable
+      JWT_SECRET: "change-me-in-production-use-32-chars"
+      ASSETS_DIR: /app/assets
+      DATA_DIR: /app/data
+      CORS_ORIGINS: "http://localhost:3000,http://frontend:3000,http://23.19.228.158:3000"
+      FRONTEND_URL: "http://23.19.228.158:3000"
+      APP_URL: "http://23.19.228.158:3000"
+      PORT: "8080"
+      # Google OAuth — значения берутся из .env файла (см. .env.example)
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      GOOGLE_REDIRECT_URL: "${GOOGLE_REDIRECT_URL:-http://23.19.228.158:3000/api/auth/google/callback}"
+      # SMTP (опционально)
+      # SMTP_HOST: "smtp.gmail.com"
+      # SMTP_PORT: "587"
+      # SMTP_USER: "you@gmail.com"
+      # SMTP_PASS: "app-password"
+      # SMTP_FROM: "you@gmail.com"
+    volumes:
+      - ../assets:/app/assets:ro
+      - reports_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  reports_data:
