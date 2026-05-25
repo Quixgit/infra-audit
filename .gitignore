@@ -27,8 +27,8 @@ assets/
 # Release binaries
 release/
 
-# Built CLI binary
-backend
+# Built CLI binary at repo root
+/backend
 
 # Environment secrets
 web/.env

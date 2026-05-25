@@ -40,8 +40,7 @@ export function Login() {
   }, [])
 
   useEffect(() => {
-    const accessToken = params.get('access_token')
-    const refreshToken = params.get('refresh_token')
+    const oauthCode = params.get('oauth_code')
     const error = params.get('error')
     if (error) {
       const messages: Record<string, string> = {
@@ -55,12 +54,18 @@ export function Login() {
       navigate('/login', { replace: true })
       return
     }
-    if (!accessToken || !refreshToken) return
-    localStorage.setItem('access_token', accessToken)
-    localStorage.setItem('refresh_token', refreshToken)
-    authApi.me()
-      .then((user) => { setAuth(user, accessToken, refreshToken); navigate('/', { replace: true }) })
-      .catch(() => toast.error('Sign-in failed: could not load user'))
+    if (!oauthCode) return
+    // Exchange the short-lived code for real tokens (tokens never touch the URL)
+    authApi.exchangeOAuthCode(oauthCode)
+      .then(({ access_token, refresh_token }) => {
+        localStorage.setItem('access_token', access_token)
+        localStorage.setItem('refresh_token', refresh_token)
+        return authApi.me().then((user) => {
+          setAuth(user, access_token, refresh_token)
+          navigate('/', { replace: true })
+        })
+      })
+      .catch(() => toast.error('Google sign-in failed: could not exchange code'))
   }, [params, navigate, setAuth])
 
   const handleGoogleSignIn = () => {

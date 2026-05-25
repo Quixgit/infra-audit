@@ -74,6 +74,11 @@ export const authApi = {
 
   googleStartUrl: () => `${BASE}/auth/google/start`,
 
+  exchangeOAuthCode: (code: string) =>
+    api.post<{ access_token: string; refresh_token: string }>(
+      '/auth/oauth/exchange', { code }
+    ).then((r) => r.data),
+
   logout: (refreshToken?: string) =>
     api.post('/auth/logout', { refresh_token: refreshToken }).catch(() => {}),
 

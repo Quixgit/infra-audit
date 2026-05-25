@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: infra_audit
       POSTGRES_USER: audit
-      POSTGRES_PASSWORD: audit123
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-changeme}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,24 +23,25 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: postgres://audit:audit123@postgres:5432/infra_audit?sslmode=disable
-      JWT_SECRET: "change-me-in-production-use-32-chars"
+      DATABASE_URL: "postgres://audit:${POSTGRES_PASSWORD:-changeme}@postgres:5432/infra_audit?sslmode=disable"
+      JWT_SECRET: "${JWT_SECRET:-}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:-}"
       ASSETS_DIR: /app/assets
       DATA_DIR: /app/data
-      CORS_ORIGINS: "http://localhost:3000,http://frontend:3000,http://23.19.228.158:3000"
-      FRONTEND_URL: "http://23.19.228.158:3000"
-      APP_URL: "http://23.19.228.158:3000"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"
+      FRONTEND_URL: "${FRONTEND_URL:-http://localhost:3000}"
+      APP_URL: "${APP_URL:-http://localhost:3000}"
       PORT: "8080"
-      # Google OAuth — значения берутся из .env файла (см. .env.example)
+      # Google OAuth — set values in .env (see .env.example)
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
-      GOOGLE_REDIRECT_URL: "${GOOGLE_REDIRECT_URL:-http://23.19.228.158:3000/api/auth/google/callback}"
-      # SMTP (опционально)
+      GOOGLE_REDIRECT_URL: "${GOOGLE_REDIRECT_URL:-}"
+      # SMTP (optional)
       # SMTP_HOST: "smtp.gmail.com"
       # SMTP_PORT: "587"
-      # SMTP_USER: "you@gmail.com"
-      # SMTP_PASS: "app-password"
-      # SMTP_FROM: "you@gmail.com"
+      # SMTP_USER: "you@example.com"
+      # SMTP_PASS: "${SMTP_PASS:-}"
+      # SMTP_FROM: "noreply@example.com"
     volumes:
       - ../assets:/app/assets:ro
       - reports_data:/app/data
