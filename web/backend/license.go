@@ -19,10 +19,10 @@ var licensePublicKeyPEM []byte
 var planFeaturesMap = map[string][]string{
 	"community":    {"share_links"},
 	"starter":      {"scheduled_audits", "share_links"},
-	"professional": {"scheduled_audits", "code_audit", "share_links", "custom_branding"},
-	"business":     {"scheduled_audits", "code_audit", "share_links", "api_tokens", "custom_branding", "team"},
+	"professional": {"scheduled_audits", "code_audit", "aws_audit", "share_links", "custom_branding"},
+	"business":     {"scheduled_audits", "code_audit", "aws_audit", "share_links", "api_tokens", "custom_branding", "team"},
 	// sso is planned but not yet implemented — excluded from active enterprise features
-	"enterprise": {"scheduled_audits", "code_audit", "share_links", "api_tokens", "custom_branding", "team"},
+	"enterprise": {"scheduled_audits", "code_audit", "aws_audit", "share_links", "api_tokens", "custom_branding", "team"},
 }
 
 func syntheticClaims(plan string) *LicenseClaims {

@@ -79,12 +79,13 @@ const auditTypes: AuditTypeCard[] = [
   {
     id: 'aws',
     name: 'AWS',
-    description: 'Scan AWS account for IAM misconfigurations, open S3 buckets, unencrypted RDS, exposed EC2 security groups.',
-    checks: ['IAM policies', 'S3 buckets', 'RDS encryption', 'EC2 / SGs', 'CloudTrail', 'Root account MFA'],
-    status: 'coming-soon',
+    description: 'Scan AWS account for IAM misconfigurations, open S3 buckets, unencrypted RDS, exposed EC2 security groups, and VPC flow logs.',
+    checks: ['IAM & MFA', 'S3 public access', 'RDS encryption', 'EC2 / Security Groups', 'VPC flow logs', 'Root account MFA'],
+    status: 'available',
     icon: Server,
     iconBg: 'bg-yellow-500/10',
     iconColor: 'text-yellow-400',
+    connectPath: '/connections/new?type=aws',
   },
   {
     id: 'gcp',
@@ -162,6 +163,8 @@ export function AuditTypes() {
 
   const { data: license } = useQuery({ queryKey: ['license'], queryFn: licenseApi.get })
   const hasCodeAudit = license?.features?.includes('code_audit') ?? false
+  const hasAWSAudit = (license?.features?.includes('aws_audit') ?? false) ||
+    (license?.plan === 'professional' || license?.plan === 'business' || license?.plan === 'enterprise')
 
   const available = auditTypes.filter((t) => t.status === 'available')
   const comingSoon = auditTypes.filter((t) => t.status === 'coming-soon')
@@ -184,7 +187,9 @@ export function AuditTypes() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {available.map((type) => {
             const Icon = type.icon
-            const locked = type.requiresFeature === 'code_audit' && !hasCodeAudit
+            const locked =
+              (type.requiresFeature === 'code_audit' && !hasCodeAudit) ||
+              (type.requiresFeature === 'aws_audit' && !hasAWSAudit)
             return (
               <Card key={type.id} className="hover:border-indigo-500/40 transition-colors">
                 <CardContent className="p-4">

@@ -310,6 +310,11 @@ func (srv *server) handleRunAudit(w http.ResponseWriter, r *http.Request) {
 		writeFeatureError(w, "code_audit")
 		return
 	}
+	// Feature gate for AWS audits
+	if conn.ConnType == "aws" && !hasFeature(lic, "aws_audit") {
+		writeFeatureError(w, "aws_audit")
+		return
+	}
 
 	if maxAudits := effectiveMaxAuditsMonth(lic); maxAudits >= 0 {
 		_, used, _ := srv.getLicenseUsage(r.Context(), tenantID)
@@ -1125,10 +1130,11 @@ var moduleKeys = []string{
 	"scanner_do", "scanner_aws", "scanner_gcp", "scanner_azure", "scanner_k8s",
 }
 
-// stubModules are disabled by default (no real implementation yet)
+// stubModules are disabled by default (not yet implemented)
 var stubModules = map[string]bool{
-	"scanner_aws": true, "scanner_gcp": true,
-	"scanner_azure": true, "scanner_k8s": true,
+	"scanner_gcp":   true,
+	"scanner_azure": true,
+	"scanner_k8s":   true,
 }
 
 func (srv *server) handleGetModules(w http.ResponseWriter, r *http.Request) {

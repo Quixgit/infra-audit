@@ -911,7 +911,7 @@ const navModuleGroups: { group: string; items: ModuleItem[] }[] = [
 
 const scannerModuleItems: ModuleItem[] = [
   { key: 'scanner_do',    label: 'DigitalOcean',          description: 'Audit Droplets, Spaces, Firewalls, Databases, and Kubernetes clusters', icon: Cloud,          stub: false },
-  { key: 'scanner_aws',   label: 'Amazon Web Services',   description: 'Audit EC2, S3, IAM, security groups, and VPCs',                         icon: Cloud,          stub: true },
+  { key: 'scanner_aws',   label: 'Amazon Web Services',   description: 'Audit EC2, S3, IAM, security groups, and VPCs (CIS AWS Foundations)',  icon: Cloud,          stub: false },
   { key: 'scanner_gcp',   label: 'Google Cloud Platform', description: 'Audit Compute Engine, Cloud Storage, IAM, and network policies',        icon: Cloud,          stub: true },
   { key: 'scanner_azure', label: 'Microsoft Azure',       description: 'Audit VMs, Storage accounts, IAM roles, and network configurations',    icon: Cloud,          stub: true },
   { key: 'scanner_k8s',   label: 'Kubernetes',            description: 'Audit any Kubernetes cluster for security misconfigurations',            icon: Layers,         stub: true },
@@ -1002,7 +1002,7 @@ function ModulesSection({ isAdmin }: { isAdmin: boolean }) {
             Cloud Scanners
           </CardTitle>
           <CardDescription>
-            Enable or disable cloud provider integrations. Stub scanners are under development — enabling them shows the option in connections but scanning is not yet active.
+            Enable or disable cloud provider integrations. Scanners marked <span className="text-yellow-400 font-medium">coming soon</span> are under development.
           </CardDescription>
         </CardHeader>
         <CardContent className="divide-y divide-border/50">
