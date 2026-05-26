@@ -310,10 +310,13 @@ export function ConnectionForm() {
         } else {
           return connectionsApi.testLocal({ repo_local_path: form.repo_local_path })
         }
-      } else if (form.conn_type === 'do') {
+      } else if (form.conn_type === 'do' || form.conn_type === 'aws') {
         if (!id) return { ok: true, message: 'Save first to test' }
         const result = await connectionsApi.test(id)
-        return { ok: result.status === 'ok', message: result.status }
+        return {
+          ok: result.status === 'ok',
+          message: (result as any).message || result.status,
+        }
       }
       return { ok: true, message: 'No test available for this type' }
     },
@@ -342,7 +345,7 @@ export function ConnectionForm() {
   const canTestNow =
     form.conn_type === 'code'
       ? form.repo_source === 'git' ? Boolean(form.repo_url) : Boolean(form.repo_local_path)
-      : form.conn_type === 'do'
+      : form.conn_type === 'do' || form.conn_type === 'aws'
       ? isEdit
       : false
 

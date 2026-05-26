@@ -278,6 +278,28 @@ func (srv *server) handleTestConnection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// AWS: verify credentials by listing IAM account summary (cheap, fast)
+	if conn.ConnType == "aws" {
+		if conn.AWSAccessKeyID == "" || conn.AWSSecretKey == "" {
+			writeError(w, http.StatusBadRequest, "AWS credentials not configured")
+			return
+		}
+		region := conn.AWSRegion
+		if region == "" {
+			region = "us-east-1"
+		}
+		if err := testAWSCredentials(r.Context(), conn.AWSAccessKeyID, conn.AWSSecretKey, region); err != nil {
+			writeError(w, http.StatusBadGateway, "AWS credentials invalid: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "ok",
+			"message": "AWS credentials verified successfully",
+		})
+		return
+	}
+
+	// DigitalOcean (default)
 	projects, err := scanner.ListDigitalOceanProjects(conn.DOToken)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "DigitalOcean API error: "+err.Error())

@@ -9,12 +9,38 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+
 	awsrules "infra-audit/internal/rules"
 	awsscanner "infra-audit/internal/scanner/aws"
 	"infra-audit/internal/model"
 	"infra-audit/internal/report"
 	"infra-audit/internal/util"
 )
+
+// testAWSCredentials verifies AWS credentials by calling STS GetCallerIdentity.
+// This is a cheap, read-only call that works with any valid IAM user or role.
+func testAWSCredentials(ctx context.Context, accessKeyID, secretKey, region string) error {
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(region),
+		config.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(accessKeyID, secretKey, ""),
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to configure AWS client: %w", err)
+	}
+	client := sts.NewFromConfig(cfg)
+	out, err := client.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return err
+	}
+	_ = aws.ToString(out.Account)
+	return nil
+}
 
 func (srv *server) runAWSAudit(jobID, connectionID, userID string) {
 	ctx := context.Background()

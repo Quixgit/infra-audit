@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Play, Pencil, Trash2, Globe, Clock, BarChart2, Lock, Code2, GitBranch, FolderOpen, ShieldCheck } from 'lucide-react'
+import { Play, Pencil, Trash2, Globe, Clock, BarChart2, Lock, Code2, GitBranch, FolderOpen, ShieldCheck, Server } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -56,6 +56,7 @@ export function ConnectionCard({ connection: conn, selected, onToggleSelect }: P
   })
 
   const isCode = conn.conn_type === 'code'
+  const isAWS = conn.conn_type === 'aws'
   const isNetworkScan = conn.conn_type === 'ssl' || conn.conn_type === 'dns'
 
   const scopeColor: Record<string, string> = {
@@ -107,6 +108,11 @@ export function ConnectionCard({ connection: conn, selected, onToggleSelect }: P
                 <Globe className="h-3 w-3" />
                 DNS
               </Badge>
+            ) : isAWS ? (
+              <Badge variant="secondary" className="flex items-center gap-1 text-yellow-400">
+                <Server className="h-3 w-3" />
+                AWS
+              </Badge>
             ) : (
               <Badge variant={(scopeColor[conn.scope_mode] as 'secondary' | 'info' | 'warning') ?? 'secondary'}>
                 {conn.scope_mode}
@@ -120,6 +126,8 @@ export function ConnectionCard({ connection: conn, selected, onToggleSelect }: P
                 : <><Globe className="h-3 w-3 shrink-0" /><span className="truncate">{repoLabel}</span></>
             ) : isNetworkScan ? (
               <><ShieldCheck className="h-3 w-3 shrink-0" /><span className="truncate">{conn.domains || 'No domains configured'}</span></>
+            ) : isAWS ? (
+              <><Server className="h-3 w-3 shrink-0" /><span className="truncate font-mono">{conn.aws_access_key_masked || 'AWS'} · {conn.aws_region || 'us-east-1'}</span></>
             ) : (
               <><Globe className="h-3 w-3" />{conn.do_token_masked}</>
             )}
@@ -150,6 +158,14 @@ export function ConnectionCard({ connection: conn, selected, onToggleSelect }: P
               {(conn.domains ?? '').split(',').filter(Boolean).map((d) => (
                 <span key={d} className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground truncate max-w-[140px]">
                   {d.trim()}
+                </span>
+              ))}
+            </div>
+          ) : isAWS ? (
+            <div className="flex flex-wrap gap-1">
+              {['EC2', 'S3', 'IAM', 'RDS', 'SGs', 'VPC'].map((svc) => (
+                <span key={svc} className="rounded bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 text-xs text-yellow-400/80">
+                  {svc}
                 </span>
               ))}
             </div>

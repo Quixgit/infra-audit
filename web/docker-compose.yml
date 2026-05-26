@@ -28,6 +28,8 @@ services:
       ENCRYPTION_KEY: "${ENCRYPTION_KEY:-}"
       ASSETS_DIR: /app/assets
       DATA_DIR: /app/data
+      # Groq API — required for AI remediation suggestions (free tier: 14400 req/day)
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
       CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"
       FRONTEND_URL: "${FRONTEND_URL:-http://localhost:3000}"
       APP_URL: "${APP_URL:-http://localhost:3000}"

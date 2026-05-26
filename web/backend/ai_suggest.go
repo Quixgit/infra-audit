@@ -13,24 +13,25 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// ── AI remediation suggestions (Anthropic Claude API) ─────────────────────────
+// ── AI remediation suggestions (Groq API — OpenAI-compatible) ─────────────────
 
-type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int                `json:"max_tokens"`
-	Messages  []anthropicMessage `json:"messages"`
-	System    string             `json:"system"`
+type groqRequest struct {
+	Model     string         `json:"model"`
+	MaxTokens int            `json:"max_tokens"`
+	Messages  []groqMessage  `json:"messages"`
 }
 
-type anthropicMessage struct {
+type groqMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type anthropicResponse struct {
-	Content []struct {
-		Text string `json:"text"`
-	} `json:"content"`
+type groqResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
 }
 
 type AISuggestion struct {
@@ -39,34 +40,34 @@ type AISuggestion struct {
 	DocLinks    []string `json:"doc_links"`
 	Difficulty  string   `json:"difficulty"` // easy | medium | hard
 	EstTime     string   `json:"est_time"`
+	Error       string   `json:"error,omitempty"`
+	Fallback    string   `json:"fallback,omitempty"`
 }
 
-func callAnthropicAPI(ctx context.Context, prompt, system string) (string, error) {
-	apiKey := envOr("ANTHROPIC_API_KEY", "")
+func callGroqAPI(ctx context.Context, system, prompt string) (string, error) {
+	apiKey := envOr("GROQ_API_KEY", "")
 	if apiKey == "" {
-		return "", fmt.Errorf("ANTHROPIC_API_KEY not configured")
+		return "", fmt.Errorf("GROQ_API_KEY not configured")
 	}
 
-	reqBody := anthropicRequest{
-		Model:     "claude-haiku-4-5-20251001",
+	reqBody := groqRequest{
+		Model:     "llama-3.1-8b-instant",
 		MaxTokens: 1024,
-		System:    system,
-		Messages: []anthropicMessage{
+		Messages: []groqMessage{
+			{Role: "system", Content: system},
 			{Role: "user", Content: prompt},
 		},
 	}
 
 	b, _ := json.Marshal(reqBody)
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -74,17 +75,17 @@ func callAnthropicAPI(ctx context.Context, prompt, system string) (string, error
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("anthropic api error %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("groq api error %d: %s", resp.StatusCode, string(body))
 	}
 
-	var result anthropicResponse
+	var result groqResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", err
 	}
-	if len(result.Content) == 0 {
-		return "", fmt.Errorf("empty response from Claude")
+	if len(result.Choices) == 0 || result.Choices[0].Message.Content == "" {
+		return "", fmt.Errorf("empty response from Groq")
 	}
-	return result.Content[0].Text, nil
+	return result.Choices[0].Message.Content, nil
 }
 
 func (srv *server) handleGetAISuggestion(w http.ResponseWriter, r *http.Request) {
@@ -97,19 +98,18 @@ func (srv *server) handleGetAISuggestion(w http.ResponseWriter, r *http.Request)
 		Description     string
 		RemediationText string
 		Severity        string
-		ResourceType    string
 		ResourceName    string
 		ConnType        string
 	}
 	err := srv.db.QueryRow(r.Context(), `
 		SELECT rt.title, rt.description, rt.remediation_text, rt.severity,
-		       rt.resource_name, rt.connection_name,
+		       rt.resource_name,
 		       COALESCE(c.conn_type, 'do') as conn_type
 		FROM remediation_tasks rt
 		LEFT JOIN connections c ON c.id = rt.connection_id
 		WHERE rt.id=$1 AND rt.tenant_id=$2`, taskID, tenantID,
 	).Scan(&task.Title, &task.Description, &task.RemediationText,
-		&task.Severity, &task.ResourceName, &task.ConnType, &task.ConnType)
+		&task.Severity, &task.ResourceName, &task.ConnType)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "task not found")
 		return
@@ -122,6 +122,10 @@ func (srv *server) handleGetAISuggestion(w http.ResponseWriter, r *http.Request)
 		providerHint = "application code"
 	}
 
+	system := `You are a cloud security expert. You provide precise, actionable security remediation instructions.
+Always respond with valid JSON only — no markdown, no code fences, no extra text.
+Provide real, working commands specific to the platform.`
+
 	prompt := fmt.Sprintf(`Security finding requiring remediation:
 
 Title: %s
@@ -131,47 +135,34 @@ Provider: %s
 Description: %s
 Existing guidance: %s
 
-Provide a concrete, actionable remediation plan. Include:
-1. Exact commands to fix this (with placeholders where needed)
-2. Step-by-step explanation
-3. Links to official documentation
-4. Difficulty estimate (easy/medium/hard)
-5. Time estimate
-
-Format your response as JSON with these keys:
+Provide a concrete, actionable remediation plan as JSON with exactly these keys:
 {
   "commands": ["command1", "command2"],
   "explanation": "step by step explanation",
   "doc_links": ["https://..."],
   "difficulty": "easy|medium|hard",
-  "est_time": "5 minutes|1 hour|etc"
+  "est_time": "5 minutes"
 }`,
 		task.Title, task.Severity, task.ResourceName, providerHint,
 		task.Description, task.RemediationText)
 
-	system := `You are a cloud security expert. You provide precise, actionable security remediation instructions.
-Always respond with valid JSON only, no markdown. Provide real, working commands specific to the platform.`
+	log.Printf("ai-suggest: generating for task %s (groq)", taskID)
 
-	log.Printf("ai-suggest: generating for task %s", taskID)
-
-	response, err := callAnthropicAPI(r.Context(), prompt, system)
+	response, err := callGroqAPI(r.Context(), system, prompt)
 	if err != nil {
-		// Return structured error so UI can handle gracefully
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"error":       err.Error(),
-			"fallback":    task.RemediationText,
-			"commands":    []string{},
-			"explanation": task.RemediationText,
-			"doc_links":   []string{},
-			"difficulty":  "medium",
-			"est_time":    "Unknown",
+		writeJSON(w, http.StatusOK, AISuggestion{
+			Error:       err.Error(),
+			Fallback:    task.RemediationText,
+			Commands:    []string{},
+			Explanation: task.RemediationText,
+			DocLinks:    []string{},
+			Difficulty:  "medium",
+			EstTime:     "Unknown",
 		})
 		return
 	}
 
-	// Try to parse as JSON
-	var suggestion AISuggestion
-	// Claude might wrap in markdown code blocks, strip them
+	// Strip markdown code fences if model added them anyway
 	cleaned := strings.TrimSpace(response)
 	if idx := strings.Index(cleaned, "{"); idx > 0 {
 		cleaned = cleaned[idx:]
@@ -180,8 +171,9 @@ Always respond with valid JSON only, no markdown. Provide real, working commands
 		cleaned = cleaned[:idx+1]
 	}
 
+	var suggestion AISuggestion
 	if err := json.Unmarshal([]byte(cleaned), &suggestion); err != nil {
-		// Return raw text as explanation
+		// Return raw text as explanation fallback
 		writeJSON(w, http.StatusOK, AISuggestion{
 			Explanation: response,
 			Commands:    []string{},
